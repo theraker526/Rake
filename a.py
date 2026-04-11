@@ -37,29 +37,24 @@ def get_discord_token():
     o.add_argument('--disable-blink-features=AutomationControlled')
     o.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
     o.add_experimental_option('useAutomationExtension', False)
-    
-    # Manually point to your existing Chrome binary
     o.binary_location = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
     try:
-        # Use ChromeDriver from PATH instead of webdriver-manager
-        # since 146 may not be in webdriver-manager yet
-        service = Service()  # Uses chromedriver from PATH if available
-        
+        service = Service()
         driver = webdriver.Chrome(service=service, options=o)
         print("Browser started!")
-        
+
         driver.get('https://discord.com/app')
         print("Waiting for Discord...")
         time.sleep(8)
-        
+
         token = driver.execute_script("""
             return (webpackChunkdiscord_app.push(
                 [[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m
             ).find(m=>m?.exports?.default?.getToken!==void 0)
              .exports.default.getToken()
         """)
-        
+
         driver.quit()
         shutil.rmtree(temp_profile, ignore_errors=True)
         return token
@@ -82,33 +77,5 @@ if __name__ == '__main__':
         print(token)
         print("="*60)
     else:
-        print("Failed.")             .exports.default.getToken()
-        """)
-        
-        driver.quit()
-        shutil.rmtree(temp_profile, ignore_errors=True)
-        
-        return token
-        
-    except Exception as e:
-        print(f"Error: {e}")
-        try:
-            driver.quit()
-        except:
-            pass
-        shutil.rmtree(temp_profile, ignore_errors=True)
-        return None
-
-if __name__ == '__main__':
-    token = get_discord_token()
-    
-    if token:
-        print("\n" + "="*60)
-        print("TOKEN FOUND:")
-        print("="*60)
-        print(token)
-        print("="*60)
-    else:
-        print("\nFailed.")
-        print("Discord may have detected headless mode and blocked the session.")
-        print("Just use F12 in Discord and run the JavaScript.")
+        print("Failed - Discord likely blocked headless mode.")
+        print("Remove the --headless=new line and run again.")
